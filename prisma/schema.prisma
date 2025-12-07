@@ -1,0 +1,133 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Enums
+enum Role {
+  ADMIN
+  COORDINATOR
+  TEACHER
+}
+
+// --- NOVOS MODELOS ESTRUTURAIS ---
+
+model Institution {
+  id        String   @id @default(cuid())
+  name      String   @unique // Ex: "CEUB TAGUATINGA"
+  address   String?
+  
+  users     User[]   
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Room {
+  id        String   @id @default(cuid())
+  name      String   @unique // Ex: "Sala 101"
+  capacity  Int?     
+  
+  schedules ClassSchedule[] 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- MODELOS DE USUÁRIO E AUTH ---
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          Role      @default(TEACHER)
+  
+  // Relação com Instituição (Substitui string hardcoded)
+  institutionId String?
+  institution   Institution? @relation(fields: [institutionId], references: [id])
+
+  department    String?   
+  phone         String?
+  hiringDate    DateTime?
+  hourlyRate    Decimal?  
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  accounts      Account[]
+  sessions      Session[]
+  classes       ClassSchedule[]
+  notifications Notification[]
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String? @db.Text
+  access_token       String? @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String? @db.Text
+  session_state      String?
+ 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ 
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// --- MODELOS DE NEGÓCIO ---
+
+model ClassSchedule {
+  id          String   @id @default(cuid())
+  className   String   // Ex: "Turma A"
+  
+  // Relação com Sala (Substitui string hardcoded)
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id])
+  
+  subject     String   
+  startTime   DateTime
+  endTime     DateTime
+  
+  teacherId   String
+  teacher     User     @relation(fields: [teacherId], references: [id])
+  
+  hasConflict Boolean  @default(false) 
+  
+  notifications Notification[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Notification {
+  id              String   @id @default(cuid())
+  type            String   
+  message         String   
+  isRead          Boolean  @default(false) 
+  
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  
+  classScheduleId String?
+  classSchedule   ClassSchedule? @relation(fields: [classScheduleId], references: [id])
+
+  createdAt       DateTime @default(now())
+}
