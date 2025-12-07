@@ -1,82 +1,94 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { CalendarDays, BookOpen } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ScheduleChart } from "@/components/admin/schedule-chart"
+import { redirect } from "next/navigation"
+import { DashboardView } from "@/components/admin/dashboard-view"
 
-// Função auxiliar para formatar dados para o gráfico (Mock ou Real)
 async function getDashboardData() {
-  // 1. Total de Aulas
-  const totalClasses = await prisma.classSchedule.count()
+  // 1. Contagens Gerais
+  const [totalClasses, totalTeachers, totalCoordinators, totalRooms] = await Promise.all([
+    prisma.classSchedule.count(),
+    prisma.user.count({ where: { role: "TEACHER" } }),
+    prisma.user.count({ where: { role: "COORDINATOR" } }),
+    prisma.room.count(),
+  ])
 
-  // 2. Agrupamento (Lógica simplificada para demonstração)
-  // Em produção, isso seria uma query SQL raw ou aggregation
+  // 2. Dados do Gráfico (Aulas da semana atual agrupadas por dia)
+  // Calculamos o intervalo da semana atual (Domingo a Sábado)
+  const today = new Date()
+  const dayOfWeek = today.getDay() // 0 = Domingo
+  
+  const startOfWeek = new Date(today)
+  startOfWeek.setDate(today.getDate() - dayOfWeek)
+  startOfWeek.setHours(0, 0, 0, 0)
+  
+  const endOfWeek = new Date(startOfWeek)
+  endOfWeek.setDate(startOfWeek.getDate() + 6)
+  endOfWeek.setHours(23, 59, 59, 999)
+
+  const classesThisWeek = await prisma.classSchedule.findMany({
+    where: {
+      startTime: {
+        gte: startOfWeek,
+        lte: endOfWeek
+      }
+    },
+    select: { startTime: true }
+  })
+
+  // Mapeamento para o formato do Recharts
+  const daysMap = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+  const chartDataInitial = daysMap.map(day => ({ day, count: 0 }))
+
+  classesThisWeek.forEach(c => {
+    const dayIndex = c.startTime.getDay()
+    chartDataInitial[dayIndex].count++
+  })
+
+  // Reordenar para começar na Segunda (Opcional, padrão brasileiro útil)
   const chartData = [
-    { day: "Segunda", count: await prisma.classSchedule.count({ where: { startTime: { lte: new Date('2024-12-08'), gte: new Date('2024-12-02') } } }) || 12 },
-    { day: "Terça", count: 19 },
-    { day: "Quarta", count: 15 },
-    { day: "Quinta", count: 22 },
-    { day: "Sexta", count: 10 },
-    { day: "Sábado", count: 5 },
+    chartDataInitial[1],
+    chartDataInitial[2],
+    chartDataInitial[3],
+    chartDataInitial[4],
+    chartDataInitial[5],
+    chartDataInitial[6],
+    chartDataInitial[0],
   ]
 
-  return { totalClasses, chartData }
+  // 3. Notificações Recentes
+  const recentNotifications = await prisma.notification.findMany({
+    take: 5,
+    orderBy: { createdAt: 'desc' },
+    include: { user: { select: { name: true } } }
+  })
+
+  return {
+    stats: {
+      classes: totalClasses,
+      teachers: totalTeachers,
+      coordinators: totalCoordinators,
+      rooms: totalRooms
+    },
+    chartData,
+    notifications: recentNotifications
+  }
 }
 
 export default async function AdminDashboard() {
   const session = await auth()
-  const { totalClasses, chartData } = await getDashboardData()
+  
+  if (!session) {
+    redirect("/auth/login")
+  }
+
+  const data = await getDashboardData()
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-      </div>
-      
-      {/* Cards de Métricas Superiores */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* Card 1: Total de Aulas (Conforme Fonte 24) */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total de Aulas Agendadas
-            </CardTitle>
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalClasses > 0 ? totalClasses : 0}</div>
-            <p className="text-xs text-muted-foreground">
-              Número total de aulas no sistema
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Card Extra: Total de Professores (Boa prática para admin) */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Professores Ativos
-            </CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-               {await prisma.user.count({ where: { role: "TEACHER" } })}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Cadastrados na plataforma
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Seção do Gráfico */}
-      <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-7">
-        <div className="col-span-4 lg:col-span-7">
-            {/* Componente Gráfico importado */}
-            <ScheduleChart data={chartData} />
-        </div>
-      </div>
-    </div>
+    <DashboardView 
+      userName={session.user?.name?.split(" ")[0] || "Usuário"} 
+      stats={data.stats}
+      chartData={data.chartData}
+      notifications={data.notifications}
+    />
   )
 }

@@ -14,8 +14,7 @@ export default async function CoordinatorsPage({
   searchParams: Promise<{ q?: string; inst?: string }> 
 }) {
   const session = await auth()
-  
-  // 1. Buscamos as instituições para o Select do Formulário e para os Filtros
+
   const institutions = await prisma.institution.findMany({
     orderBy: { name: 'asc' },
     select: { id: true, name: true }
@@ -24,17 +23,14 @@ export default async function CoordinatorsPage({
   const { q, inst } = await searchParams
   const query = q || ""
   const institutionFilter = inst || "all"
-
-  // 2. Busca de Coordenadores com a correção do filtro
   const coordinators = await prisma.user.findMany({
     where: {
       role: "COORDINATOR",
       name: { contains: query, mode: "insensitive" },
-      // CORREÇÃO: Filtramos pela relação { institution: { name: ... } }
       ...(institutionFilter !== "all" ? { institution: { name: institutionFilter } } : {})
     },
     include: {
-      institution: true // Necessário para exibir o nome na tabela
+      institution: true
     },
     orderBy: { createdAt: 'desc' }
   })
@@ -43,7 +39,6 @@ export default async function CoordinatorsPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Coordenadores</h1>
-        {/* Passamos as instituições para o modal */}
         <CoordinatorForm institutions={institutions} /> 
       </div>
 
@@ -57,7 +52,6 @@ export default async function CoordinatorsPage({
         <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
             <div className="bg-muted p-1 rounded-md flex gap-1">
                 <a href="/admin/coordinators?inst=all" className={`whitespace-nowrap px-3 py-1.5 text-sm rounded-sm ${institutionFilter === 'all' ? 'bg-background shadow' : ''}`}>Todas</a>
-                {/* Geramos os filtros dinamicamente baseado nas instituições cadastradas */}
                 {institutions.map(i => (
                   <a 
                     key={i.id} 
@@ -100,7 +94,6 @@ export default async function CoordinatorsPage({
                     </div>
                 </TableCell>
                 <TableCell>
-                    {/* CORREÇÃO: Exibimos o nome via relação */}
                     <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded font-medium">
                         {coord.institution?.name || "-"}
                     </span>
