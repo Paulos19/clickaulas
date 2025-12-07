@@ -13,9 +13,7 @@ export default async function NotificationsPage({
   searchParams: Promise<{ q?: string }> 
 }) {
   const session = await auth()
-  
-  // Buscar usuários e aulas para preencher os dropdowns do formulário
-  // Usamos 'select' para evitar erro de Decimal e payload excessivo
+
   const users = await prisma.user.findMany({
     select: { id: true, name: true, email: true }
   })
@@ -24,11 +22,9 @@ export default async function NotificationsPage({
     select: { id: true, subject: true, className: true, startTime: true }
   })
 
-  // Tratamento da Promise dos parâmetros (Next.js 15)
   const params = await searchParams
   const query = params.q || ""
 
-  // Busca de Notificações
   const notifications = await prisma.notification.findMany({
     where: {
       OR: [
